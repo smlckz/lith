@@ -30,6 +30,7 @@ enum lith_value_type {
     LITH_TYPE_SYMBOL,
     LITH_TYPE_BUILTIN,
     LITH_TYPE_CLOSURE,
+    LITH_TYPE_MACRO,
     
     LITH_NTYPES /* number of types */
 };
