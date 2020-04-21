@@ -3,7 +3,7 @@ CC = gcc
 CFLAGS = -g -std=c89 -Wall
 LDFLAGS = 
 
-SRCS = $(wildcard *.c)
+SRCS = lith.c main.c
 OBJS = $(SRCS:.c=.o)
 
 $(BIN): $(OBJS)

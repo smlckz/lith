@@ -102,8 +102,10 @@ static void lex(lith_st *L, char *input, char **start, char **end)
 {
     if (!(input = skip(L, input))) { *start = *end = NULL; return; }
     *start = input;
-    if (strchr("()'", *input)) {
+    if (strchr("()'@`", *input)) {
         *end = input + 1;
+    } else if (*input == ',') {
+        *end = input + ((input[1] == '@') ? 2 : 1);
     } else if (*input == '"') {
         /* skip the string starting " character */
         eat_string(L, *start + 1, end);
@@ -222,7 +224,7 @@ static lith_value *read_list_expr(lith_st *L, char *start, char **end)
 static lith_value *read_expr(lith_st *L, char *start, char **end)
 {
     lith_value *p, *q, *v;
-    char *t;
+    char *t, *s;
     lex(L, start, &t, end);
     if (LITH_IS_ERR(L)) return NULL;
     if (*t == '(') {
@@ -231,9 +233,18 @@ static lith_value *read_expr(lith_st *L, char *start, char **end)
         L->error = LITH_ERR_SYNTAX;
         L->error_state.msg = "unbalanced parenthesis, expected an expression";
         return NULL;
-    } else if (*t == '\'') {
-        p = LITH_CONS(L, lith_get_symbol(L, "quote"), L->nil);
-        v = read_expr(L, t + 1, end);
+    } else if ((*t == '\'') || (*t == '@') || (*t == ',') || (*t == '`')) {
+        s = ((*t == '\'')
+            ? "quote"
+            : (((*t == '@') || (*t == '`'))
+                ? "quasiquote"
+                : ((*t == ',')
+                    ? ((t[1] == '@')
+                        ? "unquote-splicing"
+                        : "unquote")
+                    : "???" )));
+        p = LITH_CONS(L, lith_get_symbol(L, s), L->nil);
+        v = read_expr(L, *end, end);
         if (!v) { lith_free_value(p); return NULL; }
         q = LITH_CONS(L, v, L->nil);
         if (!q) { lith_free_value(v); lith_free_value(p); return NULL; }
@@ -465,6 +476,55 @@ static lith_value *builtin__nil(lith_st *L, lith_value *args)
     return LITH_IN_BOOL(LITH_IS_NIL(LITH_CAR(args)));
 }
 
+static lith_value *builtin__apply(lith_st *L, lith_value *args)
+{
+    lith_value *f, *aargs, *cargs;
+    if (!lith_expect_nargs(L, "apply", 2, args, 1)) return NULL;
+    f = LITH_CAR(args);
+    aargs = LITH_CAR(LITH_CDR(args));
+    cargs = lith_copy_value(L, aargs);
+    if (!cargs) return NULL;
+    return lith_apply(L, f, cargs);
+}
+
+static lith_value *builtin__error(lith_st *L, lith_value *args)
+{
+    lith_value *arg;
+    if (!lith_expect_nargs(L, "error", 1, args, 1)) return NULL;
+    arg = LITH_CAR(args);
+    if (!lith_expect_type(L, "error", 1, LITH_TYPE_STRING, arg)) return NULL;
+    L->error = LITH_ERR_CUSTOM;
+    L->error_state.msg = arg->value.string.buf;
+    return NULL;
+}
+
+char *slurp(lith_st *L, char *filename)
+{
+    FILE *file;
+    char *buffer;
+    long length;
+    
+    file = fopen(filename, "r");
+    if (!file) {
+        L->error = LITH_ERR_CUSTOM;
+        L->error_state.msg = "could not open the file to be read";
+        return NULL;
+    }
+    
+    fseek(file, 0, SEEK_END);
+    length = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    
+    buffer = emalloc(L, length + 1);
+    if (!buffer) return NULL;
+    
+    fread(buffer, 1, length, file);
+    buffer[length] = '\0';
+    fclose(file);
+    
+    return buffer;
+}
+
 static void init_types(char **types)
 {
     types[LITH_TYPE_NIL] = "nil";
@@ -486,7 +546,7 @@ void lith_init(lith_st *L)
     L->error = LITH_ERR_OK;
     L->error_state.manual = 0;
     L->error_state.success = 1;
-    L->error_state.sym = L->error_state.msg = L->error_state.name = NULL;
+    L->error_state.sym = L->error_state.msg = L->error_state.name = L->error_state.expr = NULL;
     L->nil = lith_new_value(L);
     L->nil->type = LITH_TYPE_NIL;
     L->True = lith_new_value(L);
@@ -513,9 +573,21 @@ void lith_free(lith_st *L)
         free(v);
         p = LITH_CDR(p);
     }
+    if (L->error_state.expr)
+        free(L->error_state.expr);
     free(L->False);
     free(L->True);
     free(L->nil);
+}
+
+void lith_clear_error_state(lith_st *L)
+{
+    L->error = LITH_ERR_OK;
+    L->error_state.success = 1;
+    L->error_state.manual = 0;
+    L->error_state.msg = L->error_state.sym = L->error_state.name = NULL;
+    if (L->error_state.expr)
+        free(L->error_state.expr);
 }
 
 lith_value *lith_new_value(lith_st *L)
@@ -611,7 +683,7 @@ void lith_free_value(lith_value *val)
     if (LITH_IS(val, LITH_TYPE_PAIR)) {
         lith_free_value(LITH_CAR(val));
         lith_free_value(LITH_CDR(val));
-    } else if (LITH_IS(val, LITH_TYPE_CLOSURE) || LITH_IS(val, LITH_TYPE_CLOSURE)) {
+    } else if (LITH_IS(val, LITH_TYPE_CLOSURE) || LITH_IS(val, LITH_TYPE_MACRO)) {
         lith_free_value(LITH_CDR(val));
     } else if (LITH_IS(val, LITH_TYPE_STRING)) {
         free(val->value.string.buf);
@@ -751,8 +823,15 @@ void lith_print_error(lith_st *L, int full)
         if (E.manual) fprintf(stderr, "%s", E.msg);
         else fprintf(stderr, "expecting %s instead of %s as the argument number %zu", L->types[E.type.expected], L->types[E.type.got], E.type.narg);
         break;
+    case LITH_ERR_CUSTOM:
+        fprintf(stderr, "error: %s", E.msg);
+        break;
     }
     if (E.name) fprintf(stderr, " [in '%s']", E.name);
+    if (E.expr) {
+        fprintf(stderr, "\noccured in: ");
+        lith_print_value(E.expr);
+    }
     fputc('\n', stderr);
 }
 
@@ -829,6 +908,8 @@ void lith_fill_env(lith_st *L)
     LITH_FN_REGISTER(L, V, "eq?", builtin__eq);
     LITH_FN_REGISTER(L, V, "typeof", builtin__typeof);
     LITH_FN_REGISTER(L, V, "nil?", builtin__nil);
+    LITH_FN_REGISTER(L, V, "apply", builtin__apply);
+    LITH_FN_REGISTER(L, V, "error", builtin__error);
     #undef LITH_FN_REGISTER
 }
 
@@ -844,6 +925,7 @@ int lith_expect_nargs(lith_st *L, char *name, size_t expect, lith_value *args, i
         E->nargs.expected = expect;
         E->nargs.exact = exact;
         E->nargs.got = len;
+        E->expr = lith_copy_value(L, args);
         return 0;
     } else {
         return 1;
@@ -861,6 +943,7 @@ int lith_expect_type(lith_st *L, char *name, size_t narg, lith_valtype type, lit
     E->type.expected = type;
     E->type.got = val->type;
     E->type.narg = narg;
+    E->expr = lith_copy_value(L, val);
     return 0;
 }
 
@@ -879,7 +962,7 @@ lith_value *lith_eval_expr(lith_st *L, lith_env *V, lith_value *expr)
     f = LITH_CAR(expr);
     rest = LITH_CDR(expr);
     if (LITH_IS(f, LITH_TYPE_SYMBOL)) {
-       if (LITH_SYM_EQ(f, "quote")) {
+        if (LITH_SYM_EQ(f, "quote")) {
             if (!lith_expect_nargs(L, "quote", 1, rest, 1))
                 return NULL;
             return lith_copy_value(L, LITH_CAR(rest));
@@ -995,7 +1078,7 @@ lith_value *lith_apply(lith_st *L, lith_value *f, lith_value *args)
     } else if (!LITH_IS(f, LITH_TYPE_CLOSURE) && !LITH_IS(f, LITH_TYPE_MACRO)) {
         L->error = LITH_ERR_TYPE;
         L->error_state.manual = 1;
-        L->error_state.msg = "can not call  non-callable";
+        L->error_state.msg = "can not call non-callable";
         L->error_state.name = "{apply}";
         return NULL;
     }
@@ -1051,4 +1134,42 @@ void lith_run_string(lith_st *L, lith_env *V, char *input)
         }
     }
     lith_print_error(L, 1);
+    if (LITH_AT_END_NO_ERR(L))
+        lith_clear_error_state(L);
+}
+
+void lith_run_file(lith_st *L, lith_env *V, char *filename)
+{
+    char *contents, *end;
+    lith_value *expr, *result;
+    L->filename = filename;
+    contents = slurp(L, filename);
+    if (!contents) {
+        lith_print_error(L, 1);
+        return;
+    }
+    end = contents;
+    while (!LITH_IS_ERR(L)) {
+        if ((expr = lith_read_expr(L, end, &end))) {
+            if ((result = lith_eval_expr(L, V, expr))) {
+                lith_free_value(result);
+            } else {
+                break;
+            }
+            lith_free_value(expr);
+        }
+    }
+    free(contents);
+    if (LITH_AT_END_NO_ERR(L)) {
+        lith_clear_error_state(L);
+        return;
+    }
+    
+    lith_print_error(L, 1);
+    if (expr) {
+        printf("error occurred when evaluating the expression:\n\t");
+        lith_print_value(expr);
+        putchar('\n');
+        lith_free_value(expr);
+    }
 }

@@ -4,6 +4,8 @@
 
 #include <stddef.h>
 
+#define LITH_VERSION_STRING "0.1.0"
+
 typedef struct lith_value lith_value;
 typedef struct lith_value lith_env;
 typedef struct lith_state lith_st;
@@ -17,7 +19,8 @@ enum lith_error {
     LITH_ERR_NOMEM,
     LITH_ERR_UNBOUND,
     LITH_ERR_NARGS,
-    LITH_ERR_TYPE
+    LITH_ERR_TYPE,
+    LITH_ERR_CUSTOM
 };
 
 enum lith_value_type {
@@ -65,6 +68,7 @@ struct lith_state {
     struct lith_error_state {
         int success, manual;
         char *msg, *sym, *name;
+        lith_value *expr;
         struct lith_error_state__argsize { size_t expected, got; int exact; } nargs;
         struct lith_error_state__type { lith_valtype expected, got; size_t narg; } type;
     } error_state;
@@ -77,6 +81,8 @@ struct lith_state {
 };
 
 #define LITH_IS_ERR(L) ((L)->error != LITH_ERR_OK)
+#define LITH_AT_END_NO_ERR(L) (((L)->error == LITH_ERR_EOF) && (L)->error_state.success)
+
 #define LITH_TO_BOOL(B) ((!LITH_IS_NIL(B)) && !(LITH_IS(B, LITH_TYPE_BOOLEAN) && !((B)->value.boolean)))
 #define LITH_IN_BOOL(B) ((B) ? L->True : L->False)
 
@@ -87,7 +93,7 @@ struct lith_state {
 
 void lith_init(lith_st *);
 void lith_free(lith_st *);
-
+void lith_clear_error_state(lith_st *);
 void lith_print_error(lith_st *, int);
 
 lith_value *lith_new_value(lith_st *);
@@ -123,5 +129,6 @@ int lith_expect_type(lith_st *, char *, size_t, lith_valtype, lith_value *);
 int lith_expect_nargs(lith_st *, char *, size_t, lith_value *, int);
 
 void lith_run_string(lith_st *, lith_env *, char *);
+void lith_run_file(lith_st *, lith_env *, char *);
 
 #endif

@@ -1,0 +1,13 @@
+;;;; factorial.lith
+;;;; the factorial program written in lith
+
+(define (! n)
+    (if (< n 2)
+        1
+        (* n (! (- n 1)))))
+
+(define (fac n)
+    (apply * (range 1 n)))
+
+(print (! 5) (! 6))
+(print (fac 10))

@@ -1,0 +1,174 @@
+;;;; lib.lith
+;;;; the standard library of lith
+
+(define (list . args) args)
+(define (caar x) (car (car x)))
+(define (cadr x) (car (cdr x)))
+(define (cdar x) (cdr (car x)))
+(define (cddr x) (cdr (cdr x)))
+
+(define (not x) (if x #f #t))
+
+(define (pair? p)
+    (eq? (typeof p) 'pair))
+(define (integer? i)
+    (eq? (typeof i) 'integer))
+(define (number? n)
+    (eq? (typeof n) 'number))
+
+(define (foldl f init lst)
+    (if (nil? lst)
+        init
+        (foldl f (f init (car lst)) (cdr lst))))
+
+(define (map f lst)
+    (if (nil? lst)
+        ()
+        (cons (f (car lst)) (map f (cdr lst)))))
+
+(define (foldr f init lst)
+    (if (nil? lst)
+        init
+        (f (car lst) (foldr f init (cdr lst)))))
+
+(define (last lst)
+    (if (nil? lst)
+        ()
+        (if (nil? (cdr lst))
+            (car lst)
+            (last (cdr lst)))))
+
+(define (begin . body) (last body))
+
+(define (reverse lst)
+    (foldl (lambda (a x) (cons x a)) () lst))
+
+(define (append a b)
+    (foldr cons b a))
+
+(define-macro (quasiquote x)
+    (if (pair? x)
+        (if (eq? (car x) 'unquote)
+            (cadr x)
+            (if (if (pair? (car x)) (eq? (caar x) 'unquote-splicing) #f)
+                (list 'append
+                    (cadr (car x))
+                    (list 'quasiquote (cdr x)))
+                (list 'cons
+                    (list 'quasiquote (car x))
+                    (list 'quasiquote (cdr x)))))
+        (list 'quote x)))
+
+(define (flip f)
+    (lambda (a b)
+        (f b a)))
+
+(define-macro (and . x)
+    (if (nil? x)
+        #t
+        `(if ,(car x) (and . ,(cdr x)) #f)))
+
+(define-macro (or . x)
+    (if (nil? x)
+        #f
+        `(if ,(car x) #t (or . ,(cdr x)))))
+
+(define-macro (let env . body)
+    `((lambda ,(map car env) . ,body) . ,(map cadr env)))
+
+(define (numeric? x)
+    (or (integer? x) (number? x)))
+
+(define (+ . n)
+    (foldl :+ 0 n))
+(define (* . n)
+    (foldl :* 1 n))
+
+(define (- . n)
+    (if (nil? n)
+        0
+        (foldl :- (car n) (cdr n))))
+
+(define (/ . n)
+    (if (nil? n)
+        1
+        (foldl :/ (car n) (cdr n))))
+
+(define infty (:/ 1.0 0.0))
+(define -infty (:/ -1.0 0.0))
+
+(define (:<= a b) (not (:> a b)))
+(define (:>= a b) (not (:< a b)))
+
+(define (< a b . c)
+    (if (nil? c)
+        (:< a b)
+        (and (:< a b) (apply < (cons b c)))))
+(define (> a b . c)
+    (if (nil? c)
+        (:> a b)
+        (and (:> a b) (apply > (cons b c)))))
+(define (= a b . c)
+    (if (nil? c)
+        (:== a b)
+        (and (:== a b) (apply = (cons b c)))))
+(define (<= a b . c)
+    (if (nil? c)
+        (:<= a b)
+        (and (:<= a b) (apply <= (cons b c)))))
+(define (>= a b . c)
+    (if (nil? c)
+        (:>= a b)
+        (and (:>= a b) (apply >= (cons b c)))))
+
+(define (!= a b)
+    (not (:== a b)))
+
+(define (mod a b) (:% a b))
+
+(define-macro (cond . body)
+    (if (nil? body)
+        (error "cond: no else clause")
+        (if (not (pair? (car body)))
+            (error "cond: expecting a list as clause")
+            (if (eq? (caar body) 'else)
+                `(begin . ,(cdar body))
+                `(if ,(caar body)
+                    (begin . ,(cdar body))
+                    (cond . ,(cdr body)))))))
+
+(define (sign x)
+    (cond
+        ((not (numeric? x)) (error "sign: input must be numeric"))
+        ((< x 0) -1)
+        ((> x 0) 1)
+        (else 0)))
+
+(define (filter f lst)
+    (if (nil? lst)
+        ()
+        (let ((rest (filter f (cdr lst)))
+              (cur (car lst)))
+            (if (f cur)
+                (cons cur rest)
+                rest))))
+
+(define (abs x)
+    (if (< x 0) (- x) x))
+(define (divides a b)
+    (= (mod a b) 0))
+
+(define (1+ x) (+ x 1))
+(define (1- x) (- x 1))
+
+(define (range a b)
+    (if (> a b)
+        ()
+        (cons a (range (1+ a) b))))
+
+(define (o f g) (lambda (x) (f (g x))))
+
+(define (for-each f lst)
+    (if (nil? lst)
+        ()
+        (begin (f (car lst)) (for-each f (cdr lst)))))

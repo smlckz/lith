@@ -1,0 +1,4 @@
+;;;; hello.lith
+;;;; the "Hello, world!" program written in lith
+
+(print "Hello, world!")
