@@ -4,7 +4,7 @@
 
 #include <stddef.h>
 
-#define LITH_VERSION_STRING "0.1.0"
+#define LITH_VERSION_STRING "0.1.0-alpha"
 
 typedef struct lith_value lith_value;
 typedef struct lith_value lith_env;
@@ -121,7 +121,7 @@ lith_env *lith_new_env(lith_st *, lith_env *);
 void lith_free_env(lith_env *);
 
 lith_value *lith_env_get(lith_st *, lith_env *, lith_value *);
-void lith_env_set(lith_st *, lith_env *, lith_value *, lith_value *);
+void lith_env_put(lith_st *, lith_env *, lith_value *, lith_value *);
 
 void lith_fill_env(lith_st *);
 

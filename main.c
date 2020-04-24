@@ -27,11 +27,6 @@ static void show_help(char *progname)
         "");
 }
 
-static void illegal_option(char *progname, char *opt)
-{
-    fprintf(stderr, "lith: invalid option '%s': try '%s --help' to know the available options\n", opt, progname);
-}
-
 int main(int argc, char **argv)
 {
     int ret;
@@ -44,7 +39,7 @@ int main(int argc, char **argv)
     L = &T;
     lith_init(L);
     W = lith_new_env(L, L->global);
-    lith_run_file(L, W, "lib.lith");
+    lith_run_file(L, L->global, "lib.lith");
     if (LITH_IS_ERR(L)) ret |= 16; 
     
     for (arg = argv+1; arg < argv+argc; arg++) {
@@ -55,8 +50,12 @@ int main(int argc, char **argv)
             if (LITH_IS_ERR(L)) ret |= 64;
             lith_clear_error_state(L);
         } else if (!strcmp(*arg, "-e") || !strcmp(*arg, "--evaluate")) {
+            if (!*++arg) {
+                fprintf(stderr, "lith: expecting an argument for '%s'\n", *--arg);
+                break;
+            }
             V = lith_new_env(L, W);
-            lith_run_string(L, V, *++arg);
+            lith_run_string(L, V, *arg);
             lith_free_env(V);
             if (LITH_IS_ERR(L)) ret |= 32;
             lith_clear_error_state(L);
@@ -67,7 +66,7 @@ int main(int argc, char **argv)
             show_version();
             break;
         } else {
-            illegal_option(argv[0], *arg);
+            fprintf(stderr, "lith: invalid option '%s': try '%s --help' for available options\n", *arg, argv[0]);
             break;
         }
     }
