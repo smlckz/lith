@@ -32,9 +32,24 @@ int main(int argc, char **argv)
     int ret;
     lith_st T, *L;
     lith_env *V, *W;
-    char **arg;
+    char **arg, *a;
     
-    if (argc < 2) return 8;
+    if (argc < 2) {
+        show_help(argv[0]);
+        return 8;
+    }
+    
+    a = argv[1];
+    if (a[0] == '-') {
+        if (!strcmp(a, "-v") || !strcmp(a, "--version")) {
+            show_version();
+            return 0;
+        } else if (!strcmp(a, "-h") || !strcmp(a, "--help")) {
+            show_help(argv[0]);
+            return 0;
+        }
+    }
+    
     ret = 0;
     L = &T;
     lith_init(L);
@@ -59,12 +74,6 @@ int main(int argc, char **argv)
             lith_free_env(V);
             if (LITH_IS_ERR(L)) ret |= 32;
             lith_clear_error_state(L);
-        } else if (!strcmp(*arg, "-h") || !strcmp(*arg, "--help")) {
-            show_help(argv[0]);
-            break;
-        } else if (!strcmp(*arg, "-v") || !strcmp(*arg, "--version")) {
-            show_version();
-            break;
         } else {
             fprintf(stderr, "lith: invalid option '%s': try '%s --help' for available options\n", *arg, argv[0]);
             break;

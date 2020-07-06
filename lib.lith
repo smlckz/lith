@@ -15,6 +15,10 @@
     (eq? (typeof i) 'integer))
 (define (number? n)
     (eq? (typeof n) 'number))
+(define (boolean? n)
+    (eq? (typeof n) 'boolean))
+(define (string? s)
+    (eq? (typeof s) 'string))
 
 (define (foldl f init lst)
     (if (nil? lst)
@@ -37,8 +41,6 @@
         (if (nil? (cdr lst))
             (car lst)
             (last (cdr lst)))))
-
-(define (begin . body) (last body))
 
 (define (reverse lst)
     (foldl (lambda (a x) (cons x a)) () lst))
@@ -125,6 +127,9 @@
     (not (:== a b)))
 
 (define (mod a b) (:% a b))
+
+(define-macro (begin a . body)
+    `((lambda () ,a . ,body)))
 
 (define-macro (cond . body)
     (if (nil? body)
