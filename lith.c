@@ -184,46 +184,46 @@ static lith_value *read_expr(lith_st *L, char *start, char **end);
 
 static lith_value *read_list_expr(lith_st *L, char *start, char **end)
 {
-    lith_value *p, *r, *v;
+    lith_value *p, *expr, *list;
     char *t;
     *end = start;
-    v = p = L->nil;
+    list = p = L->nil;
     for (;;) {
         lex(L, *end, &t, end);
         if (LITH_IS_ERR(L)) return NULL;
-        if (*t == ')') return v;
+        if (*t == ')') return list;
         if (*t == '.' && (*end - t == 1)) {
             if (LITH_IS_NIL(p)) {
                 lith_simple_error(L, LITH_ERR_SYNTAX,
                     "improper lists do not start with '.'");
-                lith_free_value(v);
+                lith_free_value(list);
                 return NULL;
             }
-            r = read_expr(L, *end, end);
+            expr = read_expr(L, *end, end);
             if (LITH_IS_ERR(L)) {
-                 lith_free_value(v);
+                 lith_free_value(list);
                  return NULL;
             }
-            LITH_CDR(p) = r;
+            LITH_CDR(p) = expr;
             lex(L, *end, &t, end);
             if (LITH_IS_ERR(L) || (*t != ')')) {
                 lith_simple_error(L, LITH_ERR_SYNTAX,
                     "expecting ')' at the end of this improper list");
-                lith_free_value(v);
+                lith_free_value(list);
                 return NULL;
             }
-            return v;
+            return list;
         }
-        r = read_expr(L, t, end);
+        expr = read_expr(L, t, end);
         if (LITH_IS_ERR(L)) {
-            lith_free_value(v);
+            lith_free_value(list);
             return NULL;
         }
         if (LITH_IS_NIL(p)) {
-            v = LITH_CONS(L, r, L->nil);
-            p = v;
+            list = LITH_CONS(L, expr, L->nil);
+            p = list;
         } else {
-            LITH_CDR(p) = LITH_CONS(L, r, L->nil);
+            LITH_CDR(p) = LITH_CONS(L, expr, L->nil);
             p = LITH_CDR(p);
         }
     }
@@ -241,15 +241,14 @@ static lith_value *read_expr(lith_st *L, char *start, char **end)
         lith_simple_error(L, LITH_ERR_SYNTAX, "unbalanced parenthesis, expected an expression");
         return NULL;
     } else if ((*t == '\'') || (*t == '@') || (*t == ',') || (*t == '`')) {
-        s = ((*t == '\'')
-          ? "quote"
-          : (((*t == '@') || (*t == '`'))
-            ? "quasiquote"
-            : ((*t == ',')
-              ? ((t[1] == '@')
+        if (*t == '\'')
+            s = "quote";
+        else if ((*t == '@') || (*t == '`'))
+            s = "quasiquote";
+        else if (*t == ',')
+            s = (t[1] == '@')
                 ? "unquote-splicing"
-                : "unquote")
-              : "???" )));
+                : "unquote";
         p = LITH_CONS(L, lith_get_symbol(L, s), L->nil);
         v = read_expr(L, *end, end);
         if (!v) { lith_free_value(p); return NULL; }
@@ -1110,6 +1109,12 @@ lith_value *lith_eval_expr(lith_st *L, lith_env *V, lith_value *expr)
             if (!lith_expect_nargs(L, "quote", 1, rest, 1))
                 return NULL;
             return lith_copy_value(L, LITH_CAR(rest));
+        } else if (LITH_SYM_EQ(f, "eval!")) {
+            if (!lith_expect_nargs(L, "eval!", 1, rest, 1))
+                return NULL;
+            val = lith_eval_expr(L, V, LITH_CAR(rest));
+            if (!val) return NULL;
+            return lith_eval_expr(L, V, val); 
         } else if (LITH_SYM_EQ(f, "if")) {
             if (!lith_expect_nargs(L, "if", 3, rest, 1)) return NULL;
             val = lith_eval_expr(L, V, LITH_CAR(rest));
@@ -1264,18 +1269,20 @@ lith_value *lith_apply(lith_st *L, lith_value *f, lith_value *args)
     return r;
 }
 
-void lith_run_string(lith_st *L, lith_env *V, char *input)
+void lith_run_string(lith_st *L, lith_env *V, char *input, int repl)
 {
     char *end;
     lith_value *expr, *res;
     end = input;
-    L->filename = "<<string>>";
+    L->filename = repl ? "<<stdin>>" : "<<string>>";
     
     while (!LITH_IS_ERR(L)) {
         if ((expr = lith_read_expr(L, end, &end))) {
-            printf(">> ");
-            lith_print_value(expr, stdout);
-            putchar('\n');
+            if (!repl) {
+                printf(">> ");
+                lith_print_value(expr, stdout);
+                putchar('\n');
+            }
             if ((res = lith_eval_expr(L, V, expr))) {
                 printf("-> ");
                 lith_print_value(res, stdout);

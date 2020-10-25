@@ -157,7 +157,7 @@ void lith_fill_env(lith_st *, lith_lib);
 int lith_expect_type(lith_st *, char *, size_t, lith_valtype, lith_value *);
 int lith_expect_nargs(lith_st *, char *, size_t, lith_value *, int);
 
-void lith_run_string(lith_st *, lith_env *, char *);
+void lith_run_string(lith_st *, lith_env *, char *, int);
 void lith_run_file(lith_st *, lith_env *, char *);
 
 #endif /* lith_h */
