@@ -1,54 +1,61 @@
 ;;;; lib.lith
 ;;;; the standard library of lith
 
-(define (list . args) args)
-(define (caar x) (car (car x)))
-(define (cadr x) (car (cdr x)))
-(define (cdar x) (cdr (car x)))
-(define (cddr x) (cdr (cdr x)))
+(def list (lambda args args))
 
-(define (not x) (if x #f #t))
+(macro (func decl body . rest)
+    (if (eq? (typeof decl) 'pair)
+        (list 'def (car decl)
+            (cons 'lambda (cons (cdr decl) (cons body rest))))
+        (error "func: expected function declaration")))
 
-(define (pair? p)
+(func (caar x) (car (car x)))
+(func (cadr x) (car (cdr x)))
+(func (cdar x) (cdr (car x)))
+(func (cddr x) (cdr (cdr x)))
+
+(func (not x) (if x #f #t))
+
+(func (pair? p)
     (eq? (typeof p) 'pair))
-(define (integer? i)
+(func (integer? i)
     (eq? (typeof i) 'integer))
-(define (number? n)
+(func (number? n)
     (eq? (typeof n) 'number))
-(define (boolean? n)
+(func (boolean? n)
     (eq? (typeof n) 'boolean))
-(define (string? s)
+(func (string? s)
     (eq? (typeof s) 'string))
 
-(define (foldl f init lst)
+(func (foldl f init lst)
     (if (nil? lst)
         init
         (foldl f (f init (car lst)) (cdr lst))))
 
-(define (map f lst)
+(func (map f lst)
     (if (nil? lst)
         ()
         (cons (f (car lst)) (map f (cdr lst)))))
 
-(define (foldr f init lst)
+(func (foldr f init lst)
     (if (nil? lst)
         init
         (f (car lst) (foldr f init (cdr lst)))))
 
-(define (last lst)
+(func (last lst)
     (if (nil? lst)
         ()
         (if (nil? (cdr lst))
             (car lst)
             (last (cdr lst)))))
 
-(define (reverse lst)
+(func (reverse lst)
     (foldl (lambda (a x) (cons x a)) () lst))
 
-(define (append a b)
+(func (append a b)
     (foldr cons b a))
 
-(define-macro (quasiquote x)
+(macro (quasiquote x)
     (if (pair? x)
         (if (eq? (car x) 'unquote)
             (cadr x)
@@ -61,77 +68,77 @@
                     (list 'quasiquote (cdr x)))))
         (list 'quote x)))
 
-(define (flip f)
+(func (flip f)
     (lambda (a b)
         (f b a)))
 
-(define-macro (and . x)
+(macro (and . x)
     (if (nil? x)
         #t
         `(if ,(car x) (and . ,(cdr x)) #f)))
 
-(define-macro (or . x)
+(macro (or . x)
     (if (nil? x)
         #f
         `(if ,(car x) #t (or . ,(cdr x)))))
 
-(define-macro (let env . body)
+(macro (let env . body)
     `((lambda ,(map car env) . ,body) . ,(map cadr env)))
 
-(define (numeric? x)
+(func (numeric? x)
     (or (integer? x) (number? x)))
 
-(define (+ . n)
+(func (+ . n)
     (foldl :+ 0 n))
-(define (* . n)
+(func (* . n)
     (foldl :* 1 n))
 
-(define (- . n)
+(func (- . n)
     (if (nil? n)
         0
-        (foldl :- (car n) (cdr n))))
+         (foldl :- (car n) (cdr n))))
 
-(define (/ . n)
+(func (/ . n)
     (if (nil? n)
         1
         (foldl :/ (car n) (cdr n))))
 
-(define infty (:/ 1.0 0.0))
-(define -infty (:/ -1.0 0.0))
+(def infinity (:/ 1.0 0.0))
+(def -infinity (:/ -1.0 0.0))
 
-(define (:<= a b) (not (:> a b)))
-(define (:>= a b) (not (:< a b)))
+(func (:<= a b) (not (:> a b)))
+(func (:>= a b) (not (:< a b)))
 
-(define (< a b . c)
+(func (< a b . c)
     (if (nil? c)
         (:< a b)
         (and (:< a b) (apply < (cons b c)))))
-(define (> a b . c)
+(func (> a b . c)
     (if (nil? c)
         (:> a b)
         (and (:> a b) (apply > (cons b c)))))
-(define (= a b . c)
+(func (= a b . c)
     (if (nil? c)
         (:== a b)
         (and (:== a b) (apply = (cons b c)))))
-(define (<= a b . c)
+(func (<= a b . c)
     (if (nil? c)
         (:<= a b)
         (and (:<= a b) (apply <= (cons b c)))))
-(define (>= a b . c)
+(func (>= a b . c)
     (if (nil? c)
         (:>= a b)
         (and (:>= a b) (apply >= (cons b c)))))
 
-(define (!= a b)
+(func (!= a b)
     (not (:== a b)))
 
-(define (mod a b) (:% a b))
+(func (mod a b) (:% a b))
 
-(define-macro (begin a . body)
+(macro (begin a . body)
     `((lambda () ,a . ,body)))
 
-(define-macro (cond . body)
+(macro (cond . body)
     (if (nil? body)
         (error "cond: no else clause")
         (if (not (pair? (car body)))
@@ -142,14 +149,14 @@
                     (begin . ,(cdar body))
                     (cond . ,(cdr body)))))))
 
-(define (sign x)
+(func (sign x)
     (cond
         ((not (numeric? x)) (error "sign: input must be numeric"))
         ((< x 0) -1)
         ((> x 0) 1)
         (else 0)))
 
-(define (filter f lst)
+(func (filter f lst)
     (if (nil? lst)
         ()
         (let ((rest (filter f (cdr lst)))
@@ -158,22 +165,27 @@
                 (cons cur rest)
                 rest))))
 
-(define (abs x)
+(func (abs x)
     (if (< x 0) (- x) x))
-(define (divides a b)
+(func (divides a b)
     (= (mod a b) 0))
 
-(define (1+ x) (+ x 1))
-(define (1- x) (- x 1))
+(func (1+ x) (+ x 1))
+(func (1- x) (- x 1))
 
-(define (range a b)
+(func (range a b)
     (if (> a b)
         ()
         (cons a (range (1+ a) b))))
 
-(define (o f g) (lambda (x) (f (g x))))
+(func (length lst)
+    (if (nil? lst)
+        0
+        (1+ (length (cdr lst)))))
 
-(define (for-each f lst)
+(func (o f g) (lambda (x) (f (g x))))
+
+(func (for-each f lst)
     (if (nil? lst)
         ()
         (begin (f (car lst)) (for-each f (cdr lst)))))

@@ -238,7 +238,8 @@ static lith_value *read_expr(lith_st *L, char *start, char **end)
     if (*t == '(') {
         return read_list_expr(L, *end, end);
     } else if (*t == ')') {
-        lith_simple_error(L, LITH_ERR_SYNTAX, "unbalanced parenthesis, expected an expression");
+        lith_simple_error(L, LITH_ERR_SYNTAX,
+            "unbalanced parenthesis, expected an expression");
         return NULL;
     } else if ((*t == '\'') || (*t == '@') || (*t == ',') || (*t == '`')) {
         if (*t == '\'')
@@ -279,56 +280,46 @@ static size_t list_length(lith_value *v)
     return len;
 }
 
-static size_t lamargs_length(lith_value *args, int *improper)
-{
-    size_t i;
-    for (i = 0; LITH_IS(args, LITH_TYPE_PAIR); args = LITH_CDR(args)) ++i;
-    *improper = !LITH_IS_NIL(args);
-    return i;
-}
-
 /* builtin functions of lith */
 
-/* (car '(a . b)) -> a */
+/* car[1] :: (car '(a . b)) -> a */
 static lith_value *builtin__car(lith_st *L, lith_value *args)
 {
     lith_value *list;
-    if (!lith_expect_nargs(L, "car", 1, args, 1)) return NULL;
     list = LITH_CAR(args);
     if (!lith_expect_type(L, "car", 1, LITH_TYPE_PAIR, list)) return NULL;
     return LITH_CAR(list);
 }
 
-/* (cdr '(a . b)) -> b */
+/* cdr[1] :: (cdr '(a . b)) -> b */
 static lith_value *builtin__cdr(lith_st *L, lith_value *args)
 {
     lith_value *pair;
-    if (!lith_expect_nargs(L, "cdr", 1, args, 1)) return NULL;
     pair = LITH_CAR(args);
     if (!lith_expect_type(L, "cdr", 1, LITH_TYPE_PAIR, pair)) return NULL;
     return LITH_CDR(pair);
 }
 
-/* (cons a b) -> (a . b) */
+/* cons[2] :: (cons a b) -> (a . b) */
 static lith_value *builtin__cons(lith_st *L, lith_value *args)
 {
     lith_value *head, *tail;
-    if (!lith_expect_nargs(L, "cons", 2, args, 1)) return NULL;
     head = LITH_CAR(args);
     tail = LITH_CAR(LITH_CDR(args));
     return LITH_CONS(L, head, tail);
 }
 
-static void lith__print(lith_value *v)
+static void lith__print(lith_st *L, lith_value *v)
 {
     if (LITH_IS(v, LITH_TYPE_STRING)) {
         fwrite(v->value.string.buf, 1, v->value.string.len, stdout);
     } else {
-        lith_print_value(v, stdout);
+        lith_print_value(L, v, stdout);
     }
 }
 
-/* (print ...) -> ()
+/* print[1+] ::
+ * (print ...) -> ()
  * and prints the values
  * separated by ' '
  * and a newline ('\n')
@@ -336,13 +327,12 @@ static void lith__print(lith_value *v)
 static lith_value *builtin__print(lith_st *L, lith_value *args)
 {
     lith_value *v;
-    if (!lith_expect_nargs(L, "print", 1, args, 0)) return NULL;
     v = args;
-    lith__print(LITH_CAR(v));
+    lith__print(L, LITH_CAR(v));
     v = LITH_CDR(v);
     while (!LITH_IS_NIL(v)) {
         putchar(' ');
-        lith__print(LITH_CAR(v));
+        lith__print(L, LITH_CAR(v));
         v = LITH_CDR(v);
     }
     putchar('\n');
@@ -354,7 +344,6 @@ static lith_value *builtin__print(lith_st *L, lith_value *args)
         n2_is_integer, n2_is_number, \
         n1_is_numeric, n2_is_numeric; \
     lith_value *arg1, *arg2; \
-    if (!lith_expect_nargs(L, fname, 2, args, 1)) return NULL; \
     arg1 = LITH_CAR(args); \
     arg2 = LITH_CAR(LITH_CDR(args)); \
     n1_is_integer = LITH_IS(arg1, LITH_TYPE_INTEGER); \
@@ -383,7 +372,7 @@ static lith_value *builtin__print(lith_st *L, lith_value *args)
             : arg2->value.number)); \
     }
 
-/* op1 <- (:+), (:-), (:*)
+/* op1[2] ::: op1 <- (:+), (:-), (:*)
  * (op1 int int) -> int
  * (op1 int num) -> num
  * (op1 num int) -> num
@@ -415,6 +404,7 @@ static lith_value *builtin__multiply(lith_st *L, lith_value *args)
     }
 
 /* type int_n0 = int \ {0} ; hah!
+ * :/[2] ::
  * (:/ int int_n0) -> int
  * (:/ int num) -> num
  * (:/ num int) -> num
@@ -428,11 +418,10 @@ static lith_value *builtin__divide(lith_st *L, lith_value *args)
     COMMON2(/)
 }
 
-/* (:% int int) -> int */
+/* :%[2] (:% int int) -> int */
 static lith_value *builtin__modulus(lith_st *L, lith_value *args)
 {
     lith_value *arg1, *arg2;
-    if (!lith_expect_nargs(L, ":%", 2, args, 1)) return NULL;
     arg1 = LITH_CAR(args);
     arg2 = LITH_CAR(LITH_CDR(args));
     if (!LITH_IS(arg1, LITH_TYPE_INTEGER) || !LITH_IS(arg2, LITH_TYPE_INTEGER)) {
@@ -459,7 +448,7 @@ static lith_value *builtin__modulus(lith_st *L, lith_value *args)
     }
 
 /* type numeric = int U num ; huh!
- * op2 <- (:<, :==, :>)
+ * op2[2] :: op2 <- (:<, :==, :>)
  * (op2 numeric numeric) -> bool
  */
 
@@ -486,12 +475,11 @@ static lith_value *builtin__is_greater_than(lith_st *L, lith_value *args)
 #undef COMMON2
 #undef COMMON1
 
-/* (eq? a b) -> bool */
+/* eq?[2] :: (eq? a b) -> bool */
 static lith_value *builtin__is_eq(lith_st *L, lith_value *args)
 {
     int eq;
     lith_value *arg1, *arg2;
-    if (!lith_expect_nargs(L, "eq?", 2, args, 1)) return NULL;
     arg1 = LITH_CAR(args);
     arg2 = LITH_CAR(LITH_CDR(args));
     if (arg1->type != arg2->type) return L->False;
@@ -512,27 +500,33 @@ static lith_value *builtin__is_eq(lith_st *L, lith_value *args)
     return LITH_IN_BOOL(eq);
 }
 
-/* (typeof a) -> sym */
+/* typeof[1] :: (typeof a) -> sym */
 static lith_value *builtin__typeof(lith_st *L, lith_value *args)
 {
     lith_value *val;
-    if (!lith_expect_nargs(L, "typeof", 1, args, 1)) return NULL;
     val = LITH_CAR(args);
     return lith_get_symbol(L, L->types[val->type]);
 }
 
-/* (nil? a) -> bool */
+/* nil?[1] :: (nil? a) -> bool */
 static lith_value *builtin__is_nil(lith_st *L, lith_value *args)
 {
-    if (!lith_expect_nargs(L, "nil?", 1, args, 1)) return NULL;
     return LITH_IN_BOOL(LITH_IS_NIL(LITH_CAR(args)));
 }
 
-/* (apply (i... -> a) (i...)) -> a */
+/* list?[1] :: (list? a) -> bool */
+static lith_value *builtin__is_list(lith_st *L, lith_value *args)
+{
+    lith_value *val;
+    val = LITH_CAR(args);
+    return LITH_IN_BOOL(LITH_IS(val, LITH_TYPE_PAIR)
+        && is_proper_list(val));
+}
+
+/* apply[2] :: (apply (i... -> a) (i...)) -> a */
 static lith_value *builtin__apply(lith_st *L, lith_value *args)
 {
     lith_value *f, *aargs, *cargs;
-    if (!lith_expect_nargs(L, "apply", 2, args, 1)) return NULL;
     f = LITH_CAR(args);
     aargs = LITH_CAR(LITH_CDR(args));
     cargs = lith_copy_value(L, aargs);
@@ -540,11 +534,10 @@ static lith_value *builtin__apply(lith_st *L, lith_value *args)
     return lith_apply(L, f, cargs);
 }
 
-/* (error str) -> _|_ */
+/* error[1] :: (error str) -> _|_ */
 static lith_value *builtin__error(lith_st *L, lith_value *args)
 {
     lith_value *arg;
-    if (!lith_expect_nargs(L, "error", 1, args, 1)) return NULL;
     arg = LITH_CAR(args);
     if (!lith_expect_type(L, "error", 1, LITH_TYPE_STRING, arg)) return NULL;
     L->error = LITH_ERR_CUSTOM;
@@ -552,7 +545,7 @@ static lith_value *builtin__error(lith_st *L, lith_value *args)
     return NULL;
 }
 
-/* (load str) -> ()
+/* load[1] :: (load str) -> ()
  * the contents of the file given by
  * the string containing the path of that file is executed
  */
@@ -560,7 +553,6 @@ static lith_value *builtin__error(lith_st *L, lith_value *args)
 static lith_value *builtin__load(lith_st *L, lith_value *args)
 {
     lith_value *filename;
-    if (!lith_expect_nargs(L, "load", 1, args, 1)) return NULL;
     filename = LITH_CAR(args);
     if (!lith_expect_type(L, "load", 1, LITH_TYPE_STRING, filename)) return NULL;
     lith_run_file(L, L->global, filename->value.string.buf);
@@ -572,7 +564,7 @@ static lith_value *builtin__load(lith_st *L, lith_value *args)
 
 /* some more utilities */
 
-char *slurp(lith_st *L, char *filename)
+static char *slurp(lith_st *L, char *filename)
 {
     FILE *file;
     char *buffer;
@@ -613,25 +605,26 @@ static void init_types(char **types)
 }
 
 struct lith_lib_fn lith_builtins[] = {
-    {"car", builtin__car},
-    {"cdr", builtin__cdr},
-    {"cons", builtin__cons},
-    {"typeof", builtin__typeof},
-    {"print", builtin__print},
-    {":+", builtin__add},
-    {":-", builtin__subtract},
-    {":*", builtin__multiply},
-    {":/", builtin__divide},
-    {":%", builtin__modulus},
-    {":<", builtin__is_less_than},
-    {":==", builtin__is_num_equal},
-    {":>", builtin__is_greater_than},
-    {"eq?", builtin__is_eq},
-    {"nil?", builtin__is_nil},
-    {"apply", builtin__apply},
-    {"error", builtin__error},
-    {"load", builtin__load},
-    {NULL, NULL}
+    {"car", 1, 1, builtin__car},
+    {"cdr", 1, 1, builtin__cdr},
+    {"cons", 2, 1, builtin__cons},
+    {"typeof", 1, 1, builtin__typeof},
+    {"print", 1, 0, builtin__print},
+    {":+", 2, 1, builtin__add},
+    {":-", 2, 1, builtin__subtract},
+    {":*", 2, 1, builtin__multiply},
+    {":/", 2, 1, builtin__divide},
+    {":%", 2, 1, builtin__modulus},
+    {":<", 2, 1, builtin__is_less_than},
+    {":==", 2, 1, builtin__is_num_equal},
+    {":>", 2, 1, builtin__is_greater_than},
+    {"eq?", 2, 1, builtin__is_eq},
+    {"nil?", 1, 1, builtin__is_nil},
+    {"list?", 1, 1, builtin__is_list},
+    {"apply", 2, 1, builtin__apply},
+    {"error", 1, 1, builtin__error},
+    {"load", 1, 1, builtin__load},
+    {NULL, 0, 0, NULL}
 };
 
 /* Public functions */
@@ -726,21 +719,31 @@ lith_value *lith_make_symbol(lith_st *L, char *symbol)
     return val;
 }
 
-lith_value *lith_make_builtin(lith_st *L, lith_builtin_function function)
+lith_value *lith_make_builtin(lith_st *L, lith_value *name, lith_builtin_function function,
+                              size_t expect, int exact)
 {
     lith_value *val;
+    lith_callable *f;
     val = lith_new_value(L);
     if (!val) return NULL;
+    f = emalloc(L, sizeof(*f));
+    if (!f) { free(val); return NULL; }
+    f->name = name;
+    f->function = function;
+    f->expect = expect;
+    f->exact = exact;
     val->type = LITH_TYPE_BUILTIN;
-    val->value.function = function;
+    val->value.callable = f;
     return val;
 }
 
 lith_value *lith_make_closure(lith_st *L, lith_env *parent_env,
-                              lith_value *name, lith_value *arg_names, lith_value *body)
+                              lith_value *name, lith_value *arg_names, lith_value *body,
+                              size_t expect, int exact
+)
 {
     lith_value *val;
-    lith_closure *f;
+    lith_callable *f;
     val = lith_new_value(L);
     if (!val) return NULL;
     f = emalloc(L, sizeof(*f));
@@ -753,8 +756,10 @@ lith_value *lith_make_closure(lith_st *L, lith_env *parent_env,
     f->parent = parent_env;
     f->args = arg_names;
     f->body = body;
+    f->expect = expect;
+    f->exact = exact;
     val->type = LITH_TYPE_CLOSURE;
-    val->value.closure = f;
+    val->value.callable = f;
     return val;
 }
 
@@ -788,10 +793,12 @@ void lith_free_value(lith_value *val)
     if (LITH_IS(val, LITH_TYPE_PAIR)) {
         lith_free_value(LITH_CAR(val));
         lith_free_value(LITH_CDR(val));
+    } else if (LITH_IS(val, LITH_TYPE_BUILTIN)) {
+        free(val->value.callable);
     } else if (LITH_IS(val, LITH_TYPE_CLOSURE) || LITH_IS(val, LITH_TYPE_MACRO)) {
-        lith_free_value(val->value.closure->args);
-        lith_free_value(val->value.closure->body);
-        free(val->value.closure);
+        lith_free_value(val->value.callable->args);
+        lith_free_value(val->value.callable->body);
+        free(val->value.callable);
     } else if (LITH_IS(val, LITH_TYPE_STRING)) {
         free(val->value.string.buf);
     } else if (LITH_IS_NIL(val) || LITH_IS(val, LITH_TYPE_BOOLEAN)
@@ -818,43 +825,44 @@ lith_value *lith_get_symbol(lith_st *L, char *name)
     return sym;
 }
 
-void lith_print_value(lith_value *val, FILE *file)
+void lith_print_value(lith_st *L, lith_value *val, FILE *file)
 {
+    lith_callable *fn;
     if (LITH_IS_NIL(val)) {
         fprintf(file, "()");
     } else if (LITH_IS(val, LITH_TYPE_SYMBOL)) {
         fprintf(file, "%s", val->value.symbol);
     } else if (LITH_IS(val, LITH_TYPE_STRING)) {
-        print_string(val->value.string, stdout);
+        print_string(val->value.string, file);
     } else if (LITH_IS(val, LITH_TYPE_BOOLEAN)) {
         fprintf(file, "#%c", val->value.boolean ? 't' : 'f');
     } else if (LITH_IS(val, LITH_TYPE_INTEGER)) {
         fprintf(file, "%ld", val->value.integer);
     } else if (LITH_IS(val, LITH_TYPE_NUMBER)) {
         fprintf(file, "%.15g", val->value.number);
-    } else if (LITH_IS(val, LITH_TYPE_BUILTIN)) {
-        fprintf(file, "#<builtin at %p>", val->value.function);
-    } else if (LITH_IS(val, LITH_TYPE_CLOSURE) || LITH_IS(val, LITH_TYPE_MACRO)) {
-        fprintf(file, "#<%s", LITH_IS(val, LITH_TYPE_MACRO) ? "macro" : "lambda");
-        if (val->value.closure->name) {
-            fputc(' ', file);
-            lith_print_value(val->value.closure->name, file);
-        }
-        fprintf(file, " at %p>", val->value.closure);
+    } else if (LITH_IS_CALLABLE(val)) {
+        fn = val->value.callable;
+        fprintf(file, "#<%s ", L->types[val->type]);
+        if (fn->name)
+            lith_print_value(L, fn->name, file);
+        else
+            fprintf(file, "[anon]");
+        fprintf(file, "[%zu%s]", fn->expect, fn->exact ? "" : "+");
+        fprintf(file, " at %p>", (void *)fn);
     } else if (!LITH_IS(val, LITH_TYPE_PAIR)) {
-        fprintf(file, "#<unknown object at %p>", val);
+        fprintf(file, "#<unknown object at %p>", (void *)val);
     } else {
         fputc('(', file);
-        lith_print_value(LITH_CAR(val), file);
+        lith_print_value(L, LITH_CAR(val), file);
         val = LITH_CDR(val);
         while (!LITH_IS_NIL(val)) {
             if (LITH_IS(val, LITH_TYPE_PAIR)) {
                 fputc(' ', file);
-                lith_print_value(LITH_CAR(val), file);
+                lith_print_value(L, LITH_CAR(val), file);
                 val = LITH_CDR(val);
             } else {
                 fprintf(file, " . ");
-                lith_print_value(val, file);
+                lith_print_value(L, val, file);
                 break;
             }
         }
@@ -865,6 +873,7 @@ void lith_print_value(lith_value *val, FILE *file)
 lith_value *lith_copy_value(lith_st *L, lith_value *val)
 {
     lith_value *head, *pair, *p, *v, *w;
+    lith_callable *f;
     if (!val) return NULL;
     switch (val->type) {
     case LITH_TYPE_INTEGER:
@@ -874,11 +883,13 @@ lith_value *lith_copy_value(lith_st *L, lith_value *val)
     case LITH_TYPE_STRING:
         return lith_make_string(L, val->value.string.buf, val->value.string.len);
     case LITH_TYPE_BUILTIN:
-        return lith_make_builtin(L, val->value.function);
+        f = val->value.callable;
+        return lith_make_builtin(L, lith_copy_value(L, f->name), f->function, f->expect, f->exact);
     case LITH_TYPE_MACRO:
     case LITH_TYPE_CLOSURE:
-        v = lith_make_closure(L, val->value.closure->parent, val->value.closure->name,
-                val->value.closure->args, val->value.closure->body);
+        f = val->value.callable;
+        v = lith_make_closure(L, f->parent, lith_copy_value(L, f->name),
+                f->args, f->body, f->expect, f->exact);
         if (LITH_IS(val, LITH_TYPE_MACRO))
             v->type = LITH_TYPE_MACRO;
         return v;
@@ -964,7 +975,7 @@ void lith_print_error(lith_st *L, int full)
         fprintf(stderr, " [in '%s']", E.name);
     if (E.expr) {
         fprintf(stderr, "\noccured in: ");
-        lith_print_value(E.expr, stderr);
+        lith_print_value(L, E.expr, stderr);
     }
     fputc('\n', stderr);
 }
@@ -1046,11 +1057,14 @@ void lith_env_put(lith_st *L, lith_env *V, lith_value *name, lith_value *value)
 void lith_fill_env(lith_st *L, lith_lib lib)
 {
     lith_env *V;
+    lith_value *name;
     struct lith_lib_fn *fns;
     V = L->global;
     for (fns = lib; fns->name; ++fns) {
-        lith_env_put(L, V, lith_get_symbol(L, fns->name),
-            lith_make_builtin(L, fns->fn));
+        name = lith_get_symbol(L, fns->name);
+        if (!name) return;
+        lith_env_put(L, V, name,
+            lith_make_builtin(L, name, fns->fn, fns->expect, fns->exact));
     }
 }
 
@@ -1092,6 +1106,7 @@ int lith_expect_type(lith_st *L, char *name, size_t narg,
 
 lith_value *lith_eval_expr(lith_st *L, lith_env *V, lith_value *expr)
 {
+    size_t i;
     lith_value *f, *rest, *sym, *val, *args, *p, *q, *r;
     if (LITH_IS(expr, LITH_TYPE_SYMBOL)) {
         return lith_copy_value(L, lith_env_get(L, V, expr));
@@ -1121,28 +1136,15 @@ lith_value *lith_eval_expr(lith_st *L, lith_env *V, lith_value *expr)
             if (LITH_IS_ERR(L)) return NULL;
             p = LITH_CDR(rest);
             return lith_eval_expr(L, V, LITH_CAR(LITH_TO_BOOL(val) ? p : LITH_CDR(p)));
-        } else if (LITH_SYM_EQ(f, "define")) {
-            if (!lith_expect_nargs(L, "define", 2, rest, 0))
+        } else if (LITH_SYM_EQ(f, "def")) {
+            if (!lith_expect_nargs(L, "def", 2, rest, 1))
                 return NULL;
             sym = LITH_CAR(rest);
             p = LITH_CDR(rest);
-            if (!LITH_IS(sym, LITH_TYPE_SYMBOL)) {
-                if (!LITH_IS(sym, LITH_TYPE_PAIR)) {
-                    lith_simple_error(L, LITH_ERR_TYPE,
-                        "first argument must be a symbol or pair");
-                    L->error_state.name = "define";
-                    return NULL;
-                }
-                args = LITH_CDR(sym);
-                sym = LITH_CAR(sym);
-                if (!lith_expect_type(L, "define", 1, LITH_TYPE_SYMBOL, sym)) return NULL;
-                val = lith_make_closure(L, V, sym, args, p);
-            } else {
-                if (!lith_expect_nargs(L, "define", 2, rest, 1)) return NULL;
-                val = lith_eval_expr(L, V, LITH_CAR(p));
-                if (LITH_IS_CALLABLE(val))
-                    val->value.closure->name = sym;
-            }
+            if (!lith_expect_type(L, "def", 1, LITH_TYPE_SYMBOL, sym)) return NULL;
+            val = lith_eval_expr(L, V, LITH_CAR(p));
+            if (LITH_IS_CALLABLE(val))
+                val->value.callable->name = sym;
             if (!val) return NULL;
             lith_env_put(L, V, sym, val);
             return L->nil;
@@ -1157,17 +1159,17 @@ lith_value *lith_eval_expr(lith_st *L, lith_env *V, lith_value *expr)
             if (!val) return NULL;
             lith_env_set(L, V, sym, val);
             if (LITH_IS_CALLABLE(val))
-                val->value.closure->name = sym;
+                val->value.callable->name = sym;
             return L->nil;
-        } else if (LITH_SYM_EQ(f, "define-macro")) {
-            if (!lith_expect_nargs(L, "define-macro", 2, rest, 0))
+        } else if (LITH_SYM_EQ(f, "macro")) {
+            if (!lith_expect_nargs(L, "macro", 2, rest, 0))
                 return NULL;
             args = LITH_CAR(rest);
             p = LITH_CDR(rest);
-            if (!lith_expect_type(L, "define-macro", 1, LITH_TYPE_PAIR, args))
+            if (!lith_expect_type(L, "macro", 1, LITH_TYPE_PAIR, args))
                 return NULL;
             sym = LITH_CAR(args);
-            if (!lith_expect_type(L, "define-macro", 1, LITH_TYPE_SYMBOL, sym))
+            if (!lith_expect_type(L, "macro", 1, LITH_TYPE_SYMBOL, sym))
                 return NULL;
             q = LITH_CONS(L, LITH_CDR(args), p);
             if (!q) return NULL;
@@ -1176,7 +1178,7 @@ lith_value *lith_eval_expr(lith_st *L, lith_env *V, lith_value *expr)
             val = lith_eval_expr(L, V, r);
             if (!val) return NULL;
             val->type = LITH_TYPE_MACRO;
-            val->value.closure->name = sym;
+            val->value.callable->name = sym;
             lith_env_put(L, V, sym, val);
             return L->nil;
         } else if (LITH_SYM_EQ(f, "lambda")) {
@@ -1189,7 +1191,7 @@ lith_value *lith_eval_expr(lith_st *L, lith_env *V, lith_value *expr)
                     "body of lambda expression must be proper list");
                 return NULL;
             }
-            for (q = args; LITH_IS(q, LITH_TYPE_PAIR); q = LITH_CDR(q)) {
+            for (i = 0, q = args; LITH_IS(q, LITH_TYPE_PAIR); q = LITH_CDR(q), i++) {
                 if (!LITH_IS(LITH_CAR(q), LITH_TYPE_SYMBOL)) {
                     lith_simple_error(L, LITH_ERR_SYNTAX,
                         "arguments in lambda expression must be symbols");
@@ -1201,7 +1203,7 @@ lith_value *lith_eval_expr(lith_st *L, lith_env *V, lith_value *expr)
                     "arguments in lambda expression must be symbols");
                 return NULL;
             }
-            return lith_make_closure(L, V, NULL, args, p);
+            return lith_make_closure(L, V, NULL, args, p, i, LITH_IS_NIL(q));
         }
     }
     f = lith_eval_expr(L, V, f);
@@ -1233,26 +1235,24 @@ lith_value *lith_eval_expr(lith_st *L, lith_env *V, lith_value *expr)
 
 lith_value *lith_apply(lith_st *L, lith_value *f, lith_value *args)
 {
-    int is_improper_list;
-    size_t len;
     lith_env *env;
     lith_value *expected_args, *body, *r;
-    lith_closure *fn;
-    if (LITH_IS(f, LITH_TYPE_BUILTIN)) {
-        return (*f->value.function)(L, args);
-    } else if (!LITH_IS(f, LITH_TYPE_CLOSURE) && !LITH_IS(f, LITH_TYPE_MACRO)) {
+    lith_callable *fn;
+    
+    if (!LITH_IS_CALLABLE(f)) {
         lith_simple_error(L, LITH_ERR_TYPE, "can not call non-callable");
         L->error_state.name = "{apply}";
         return NULL;
     }
-    fn = f->value.closure;
+    fn = f->value.callable;
+    if (!lith_expect_nargs(L,
+        fn->name ? fn->name->value.symbol : "{lambda}",
+        fn->expect, args, fn->exact)) return NULL;
+    if (LITH_IS(f, LITH_TYPE_BUILTIN))
+        return (*fn->function)(L, args);
     env = lith_new_env(L, fn->parent);
     body = fn->body;
     expected_args = fn->args;
-    len = lamargs_length(expected_args, &is_improper_list);
-    if (!lith_expect_nargs(L,
-        fn->name ? fn->name->value.symbol : "{lambda}",
-        len, args, !is_improper_list)) return NULL;
     while (LITH_IS(expected_args, LITH_TYPE_PAIR)) {
         lith_env_put(L, env, LITH_CAR(expected_args), LITH_CAR(args));
         expected_args = LITH_CDR(expected_args);
@@ -1280,12 +1280,12 @@ void lith_run_string(lith_st *L, lith_env *V, char *input, int repl)
         if ((expr = lith_read_expr(L, end, &end))) {
             if (!repl) {
                 printf(">> ");
-                lith_print_value(expr, stdout);
+                lith_print_value(L, expr, stdout);
                 putchar('\n');
             }
             if ((res = lith_eval_expr(L, V, expr))) {
                 printf("-> ");
-                lith_print_value(res, stdout);
+                lith_print_value(L, res, stdout);
                 lith_free_value(res);
                 putchar('\n');
             }
@@ -1329,7 +1329,7 @@ void lith_run_file(lith_st *L, lith_env *V, char *filename)
     lith_print_error(L, 1);
     if (expr) {
         fprintf(stderr, "error occurred when evaluating the expression:\n\t");
-        lith_print_value(expr, stderr);
+        lith_print_value(L, expr, stderr);
         fputc('\n', stderr);
         lith_free_value(expr);
     }

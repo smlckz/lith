@@ -11,8 +11,7 @@ typedef struct lith_value lith_value;
 typedef struct lith_value lith_env;
 typedef struct lith_state lith_st;
 typedef struct lith_string lith_string;
-typedef struct lith_closure lith_closure;
-typedef enum lith_value_type lith_valtype;
+typedef struct lith_callable lith_callable;
 typedef struct lith_lib_fn *lith_lib;
 
 enum lith_error {
@@ -42,6 +41,9 @@ enum lith_value_type {
     LITH_NTYPES /* number of types */
 };
 
+/* ISO C forbids forward references to 'enum' types */
+typedef enum lith_value_type lith_valtype;
+
 typedef lith_value *(*lith_builtin_function)(lith_st *, lith_value *);
 
 struct lith_value {
@@ -58,12 +60,14 @@ struct lith_value {
         struct {
             struct lith_value *car, *cdr;
         } pair;
-        lith_builtin_function function;
-        struct lith_closure {
+        struct lith_callable {
+            int exact;
+            size_t expect;
             lith_value *name;
+            lith_builtin_function function;
             lith_env *parent;
             lith_value *args, *body;
-        } *closure;
+        } *callable;
     } value;
 };
 
@@ -78,7 +82,8 @@ struct lith_value {
 #define LITH_CONS lith_make_pair
 
 #define LITH_IS_CALLABLE(F) \
-    (LITH_IS(F, LITH_TYPE_MACRO) || LITH_IS(F, LITH_TYPE_CLOSURE))
+    (LITH_IS(F, LITH_TYPE_MACRO) || LITH_IS(F, LITH_TYPE_CLOSURE) || \
+    LITH_IS(F, LITH_TYPE_BUILTIN))
 
 struct lith_state {
     enum lith_error error;
@@ -105,6 +110,7 @@ struct lith_state {
 
 struct lith_lib_fn {
     char *name;
+    size_t expect; int exact;
     lith_builtin_function fn;
 };
 
@@ -125,7 +131,7 @@ void lith_print_error(lith_st *, int);
 void lith_simple_error(lith_st *, enum lith_error, char *);
 
 lith_value *lith_new_value(lith_st *);
-void lith_print_value(lith_value *, FILE *);
+void lith_print_value(lith_st *, lith_value *, FILE *);
 void lith_free_value(lith_value *);
 lith_value *lith_copy_value(lith_st *, lith_value *);
 
@@ -133,8 +139,8 @@ lith_value *lith_make_integer(lith_st *, long);
 lith_value *lith_make_number(lith_st *, double);
 lith_value *lith_make_symbol(lith_st *, char *);
 lith_value *lith_make_string(lith_st *, char *, size_t);
-lith_value *lith_make_builtin(lith_st *, lith_builtin_function);
-lith_value *lith_make_closure(lith_st *, lith_env *, lith_value *, lith_value *, lith_value *);
+lith_value *lith_make_builtin(lith_st *, lith_value *, lith_builtin_function, size_t, int);
+lith_value *lith_make_closure(lith_st *, lith_env *, lith_value *, lith_value *, lith_value *, size_t, int);
 lith_value *lith_make_pair(lith_st *, lith_value *, lith_value *);
 
 lith_value *lith_get_symbol(lith_st *, char *);
