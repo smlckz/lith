@@ -190,7 +190,12 @@ static lith_value *read_list_expr(lith_st *L, char *start, char **end)
     list = p = L->nil;
     for (;;) {
         lex(L, *end, &t, end);
-        if (LITH_IS_ERR(L)) return NULL;
+        if (LITH_IS_ERR(L)) {
+            if (LITH_AT_END_NO_ERR(L))
+                lith_simple_error(L, LITH_ERR_EOF,
+                    "while reading a list");
+            return NULL;
+        }
         if (*t == ')') return list;
         if (*t == '.' && (*end - t == 1)) {
             if (LITH_IS_NIL(p)) {
